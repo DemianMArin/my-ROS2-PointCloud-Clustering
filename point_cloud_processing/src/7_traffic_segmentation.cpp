@@ -29,23 +29,40 @@ class VoxelGrid_filter : public rclcpp::Node
     {
        marker_pub =
         this->create_publisher<visualization_msgs::msg::MarkerArray>("visualization_marker_array", 10);
+
+      // subscription_ =
+      // this->create_subscription<sensor_msgs::msg::PointCloud2>(
+      // "/kitti/point_cloud", 10, std::bind(&VoxelGrid_filter::timer_callback, this, std::placeholders::_1));
+
       subscription_ =
       this->create_subscription<sensor_msgs::msg::PointCloud2>(
-      "/kitti/point_cloud", 10, std::bind(&VoxelGrid_filter::timer_callback, this, std::placeholders::_1));
+      "/velodyne_points", 10, std::bind(&VoxelGrid_filter::timer_callback, this, std::placeholders::_1));
+
 
       publisher_ =
         this->create_publisher<sensor_msgs::msg::PointCloud2>("voxel_cloud", 10);
+
+      raw_input_pub = 
+        this->create_publisher<sensor_msgs::msg::PointCloud2>("/raw_input", 10);
 
 
     }
 
   private:
+
     void timer_callback(const sensor_msgs::msg::PointCloud2::SharedPtr input_cloud)
       {
         pcl::PointCloud<PointT>::Ptr pcl_cloud (new pcl::PointCloud<PointT>) ;
         pcl::PointCloud<PointT>::Ptr cropped_cloud (new pcl::PointCloud<PointT>) ;
 
         pcl::fromROSMsg(*input_cloud, *pcl_cloud);
+
+  //==================================== Displaying raw data ====================================
+
+        sensor_msgs::msg::PointCloud2 raw_data;
+        raw_data = *input_cloud;
+        // raw_input_pub ->publish(raw_data);
+
   //==================================== Pre Processing Data ====================================
         pcl::PassThrough<PointT> passing_x;
         pcl::PassThrough<PointT> passing_y;
@@ -330,7 +347,9 @@ class VoxelGrid_filter : public rclcpp::Node
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr publisher_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr raw_input_pub;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_;
+
 
   size_t count_;
 };

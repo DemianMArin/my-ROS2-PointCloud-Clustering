@@ -11,6 +11,7 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(Eigen3 REQUIRED)
 include_directories(${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
@@ -40,13 +41,20 @@ add_executable(kd_tree src/6_kd_tree.cpp)
 # ament_target_dependencies(kd_tree rclcpp sensor_msgs pcl_conversions)
 target_link_libraries(kd_tree ${PCL_LIBRARIES})
 
-
 add_executable(traffic_segmentation src/7_traffic_segmentation.cpp)
 ament_target_dependencies(traffic_segmentation rclcpp sensor_msgs pcl_conversions visualization_msgs)
 target_link_libraries(traffic_segmentation ${PCL_LIBRARIES})
 
+add_executable(testing_cloud src/testing_cloud.cpp)
+ament_target_dependencies(testing_cloud rclcpp sensor_msgs pcl_conversions Eigen3)
+target_link_libraries(testing_cloud ${PCL_LIBRARIES})
+# target_include_directories(testing_cloud_node PUBLIC
+#   ${rclcpp_INCLUDE_DIRS}
+#   ${EIGEN3_INCLUDE_DIRS}
+# )
+
 install(TARGETS
-  pcd_import plane_cloud circular_cloud filtering_segmentation  path_creation kitti_voxel kd_tree traffic_segmentation
+  pcd_import plane_cloud circular_cloud filtering_segmentation  path_creation kitti_voxel kd_tree traffic_segmentation testing_cloud 
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY
