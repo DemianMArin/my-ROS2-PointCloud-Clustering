@@ -9,6 +9,7 @@ find_package(ament_cmake REQUIRED)
 find_package(PCL REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -41,12 +42,13 @@ add_executable(kd_tree src/6_kd_tree.cpp)
 # ament_target_dependencies(kd_tree rclcpp sensor_msgs pcl_conversions)
 target_link_libraries(kd_tree ${PCL_LIBRARIES})
 
-add_executable(traffic_segmentation src/7_traffic_segmentation.cpp)
-ament_target_dependencies(traffic_segmentation rclcpp sensor_msgs pcl_conversions visualization_msgs)
-target_link_libraries(traffic_segmentation ${PCL_LIBRARIES})
+add_executable(clustering_segmentation src/clustering_segmentation.cpp)
+ament_target_dependencies(clustering_segmentation rclcpp sensor_msgs pcl_conversions visualization_msgs tf2_geometry_msgs)
+target_link_libraries(clustering_segmentation ${PCL_LIBRARIES} )
+
 
 add_executable(testing_cloud src/testing_cloud.cpp)
-ament_target_dependencies(testing_cloud rclcpp sensor_msgs pcl_conversions Eigen3)
+ament_target_dependencies(testing_cloud rclcpp sensor_msgs pcl_conversions Eigen3 ament_index_cpp)
 target_link_libraries(testing_cloud ${PCL_LIBRARIES})
 # target_include_directories(testing_cloud_node PUBLIC
 #   ${rclcpp_INCLUDE_DIRS}
@@ -54,12 +56,13 @@ target_link_libraries(testing_cloud ${PCL_LIBRARIES})
 # )
 
 install(TARGETS
-  pcd_import plane_cloud circular_cloud filtering_segmentation  path_creation kitti_voxel kd_tree traffic_segmentation testing_cloud 
+  pcd_import plane_cloud circular_cloud filtering_segmentation  path_creation kitti_voxel kd_tree clustering_segmentation testing_cloud 
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY
   launch
   rviz
+  config
   DESTINATION share/${PROJECT_NAME}/
 )
 

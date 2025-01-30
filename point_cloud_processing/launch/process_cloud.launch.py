@@ -12,6 +12,17 @@ def generate_launch_description():
             package='rviz2', executable='rviz2', output='screen',
             arguments=['-d', config_file_path])
 
+    kitti_publishers_node =  Node(
+            package='ros2_kitti_publishers', executable='kitti_publishers', output='screen')
+
+    clustering_segmentation_node = Node(
+        package='point_cloud_processing', name='clustering_segmentation', executable='clustering_segmentation', parameters=[params_file_path], output='screen')
+
+    testing_node = Node(
+        package='point_cloud_processing', name= 'testing_cloud', executable='testing_cloud', parameters=[params_file_path], output='screen')
+
     return LaunchDescription([
-        rviz_node 
+        # rviz_node,
+        clustering_segmentation_node,
+        testing_node
     ])
