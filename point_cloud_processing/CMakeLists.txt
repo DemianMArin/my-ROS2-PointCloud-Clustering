@@ -13,6 +13,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(interfaces REQUIRED)
 include_directories(${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
@@ -43,7 +44,7 @@ add_executable(kd_tree src/6_kd_tree.cpp)
 target_link_libraries(kd_tree ${PCL_LIBRARIES})
 
 add_executable(clustering_segmentation src/clustering_segmentation.cpp)
-ament_target_dependencies(clustering_segmentation rclcpp sensor_msgs pcl_conversions visualization_msgs tf2_geometry_msgs)
+ament_target_dependencies(clustering_segmentation rclcpp sensor_msgs pcl_conversions visualization_msgs tf2_geometry_msgs interfaces)
 target_link_libraries(clustering_segmentation ${PCL_LIBRARIES} )
 
 

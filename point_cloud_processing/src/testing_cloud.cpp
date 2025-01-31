@@ -136,7 +136,8 @@ class TestingCloud: public rclcpp::Node
       sensor_msgs::msg::PointCloud2 ros_cloud;
       pcl::toROSMsg(cloud, ros_cloud);
 
-      ros_cloud.header.frame_id = "map";
+      // ros_cloud.header.frame_id = "map";
+      ros_cloud.header.frame_id = "world";
       ros_cloud.header.stamp = this->now();
 
       test_pointcloud_pub->publish(ros_cloud);

@@ -21,6 +21,7 @@
 #include <pcl/point_cloud.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <cmath>
+#include "interfaces/msg/clustering_segmentation.hpp"
 
 using namespace std::chrono_literals;
 typedef pcl::PointXYZ PointT;
@@ -28,6 +29,9 @@ typedef pcl::PointXYZ PointT;
 class VoxelGrid_filter : public rclcpp::Node
 {
   public:
+
+    std_msgs::msg::Header global_header;
+
     VoxelGrid_filter()
     : Node("minimal_publisher")
     {
@@ -37,10 +41,16 @@ class VoxelGrid_filter : public rclcpp::Node
         1000ms, std::bind(&VoxelGrid_filter::axis_callback, this));
 
       /* Parameters */
-      this->declare_parameter("voxel_grid_x",rclcpp::PARAMETER_DOUBLE);
+      this->declare_parameter("voxel_grid_x",rclcpp::PARAMETER_DOUBLE); // Voxel
       this->declare_parameter("voxel_grid_y",rclcpp::PARAMETER_DOUBLE);
       this->declare_parameter("voxel_grid_z",rclcpp::PARAMETER_DOUBLE);
-      this->declare_parameter("ksearch",rclcpp::PARAMETER_INTEGER);
+      this->declare_parameter("ksearch",rclcpp::PARAMETER_INTEGER); // Normals
+      this->declare_parameter("normal_distance_weight",rclcpp::PARAMETER_DOUBLE); // Plane Segmentation
+      this->declare_parameter("max_iterations",rclcpp::PARAMETER_INTEGER);
+      this->declare_parameter("distance_threshold",rclcpp::PARAMETER_DOUBLE);
+      this->declare_parameter("cluster_tolerance",rclcpp::PARAMETER_DOUBLE); // Cluster
+      this->declare_parameter("min_cluster",rclcpp::PARAMETER_INTEGER);
+      this->declare_parameter("max_cluster",rclcpp::PARAMETER_INTEGER);
 
       /* Subscriptions */
       // subscription_ =
@@ -53,8 +63,8 @@ class VoxelGrid_filter : public rclcpp::Node
 
 
       /* Publishers */
-      traffic_seg_pub =
-        this->create_publisher<sensor_msgs::msg::PointCloud2>("/traffic_seg", 10);
+      clusters_seg_pub =
+        this->create_publisher<sensor_msgs::msg::PointCloud2>("/clusters", 10);
 
       raw_input_pub = 
         this->create_publisher<sensor_msgs::msg::PointCloud2>("/raw_input", 10);
@@ -74,9 +84,11 @@ class VoxelGrid_filter : public rclcpp::Node
       voxel_grid_pub = 
         this->create_publisher<sensor_msgs::msg::PointCloud2>("/voxel_grid", 10);
 
-      road_normal_pub = 
-        this->create_publisher<sensor_msgs::msg::PointCloud2>("/road_normal", 10);
+      plane_normal_pub = 
+        this->create_publisher<sensor_msgs::msg::PointCloud2>("/plane_normal", 10);
 
+      clust_seg_data_pub = 
+        this->create_publisher<interfaces::msg::ClusteringSegmentation>("/clust_seg_data", 10);
 
       RCLCPP_INFO(this->get_logger(), "Starting VoxelGrid_filter Node");
 
@@ -107,13 +119,15 @@ class VoxelGrid_filter : public rclcpp::Node
     }
 
     void axis_callback(){
+      std_msgs::msg::Header header = global_header;
       visualization_msgs::msg::MarkerArray axis_marker_array;
       visualization_msgs::msg::Marker x_axis_marker;
       visualization_msgs::msg::Marker y_axis_marker;
       visualization_msgs::msg::Marker z_axis_marker;
 
       // x_axis_marker
-      x_axis_marker.header.frame_id = "map";
+      // x_axis_marker.header.frame_id = "map";
+      x_axis_marker.header = header;
       x_axis_marker.ns = "axis";
       x_axis_marker.id = 1;
       x_axis_marker.type = visualization_msgs::msg::Marker::ARROW;
@@ -131,7 +145,8 @@ class VoxelGrid_filter : public rclcpp::Node
       x_axis_marker.points.push_back(endX);
 
       // y_axis_marker
-      y_axis_marker.header.frame_id = "map";
+      // y_axis_marker.header.frame_id = "map";
+      y_axis_marker.header = header;
       y_axis_marker.ns = "axis";
       y_axis_marker.id = 2;
       y_axis_marker.type = visualization_msgs::msg::Marker::ARROW;
@@ -149,7 +164,8 @@ class VoxelGrid_filter : public rclcpp::Node
       y_axis_marker.points.push_back(endY);
 
       // z_axis_marker
-      z_axis_marker.header.frame_id = "map";
+      // z_axis_marker.header.frame_id = "map";
+      z_axis_marker.header = header;
       z_axis_marker.ns = "axis";
       z_axis_marker.id = 3;
       z_axis_marker.type = visualization_msgs::msg::Marker::ARROW;
@@ -218,14 +234,16 @@ class VoxelGrid_filter : public rclcpp::Node
 
     void draw_normals(pcl::PointCloud<pcl::Normal>::Ptr normals, pcl::PointCloud<PointT>::Ptr cloud){
       visualization_msgs::msg::MarkerArray normal_array_markers;
+      std_msgs::msg::Header header = global_header;
 
       int sumRC = 0; int sumBC = 0; int sumGC = 0; 
       int sumR = 0; int sumB = 0; int sumG = 0; 
       int multiplier = 1e3;
       int maxC = 1; int minC = multiplier; int sumC = 0;
+      // float avgR; float avgG; float avgB; float avgC;
       for (int i = 0; i<int(cloud->size()); i++) {
           visualization_msgs::msg::Marker normal_marker;
-          normal_marker.header.frame_id = "map";
+          normal_marker.header = global_header;
           normal_marker.ns = "normal_axis";
           normal_marker.id = i;
           normal_marker.type = visualization_msgs::msg::Marker::ARROW;
@@ -287,13 +305,13 @@ class VoxelGrid_filter : public rclcpp::Node
 
       }
 
-      float avgR = (sumR > 0) ? sumRC/sumR : 0;
-      float avgG = (sumG > 0) ? sumGC/sumG : 0;
-      float avgB = (sumB > 0) ? sumBC/sumB : 0;
-      float avgC = sumC/normals->size() * 1.0;
+      // avgR = (sumR > 0) ? sumRC/sumR : 0;
+      // avgG = (sumG > 0) ? sumGC/sumG : 0;
+      // avgB = (sumB > 0) ? sumBC/sumB : 0;
+      // avgC = sumC/normals->size() * 1.0;
 
-      RCLCPP_INFO(this->get_logger(), "R: %d[%f], G:%d[%f], B:%d[%f]", sumR, avgR, sumG, avgG, sumB, avgB);
-      RCLCPP_INFO(this->get_logger(), "Max: %d, Min:%d, Avg: %f", maxC, minC, avgC);
+      // RCLCPP_INFO(this->get_logger(), "R: %d[%.2f], G:%d[%.2f], B:%d[%.2f]", sumR, avgR, sumG, avgG, sumB, avgB);
+      // RCLCPP_INFO(this->get_logger(), "Max: %d, Min:%d, Avg: %f", maxC, minC, avgC);
 
       normal_array_markers.markers[0].action = visualization_msgs::msg::Marker::DELETEALL;
 
@@ -303,6 +321,8 @@ class VoxelGrid_filter : public rclcpp::Node
 
     void timer_callback(const sensor_msgs::msg::PointCloud2::SharedPtr input_cloud)
       {
+        global_header = input_cloud->header;
+        interfaces::msg::ClusteringSegmentation params_msg;
         pcl::PointCloud<PointT>::Ptr pcl_cloud (new pcl::PointCloud<PointT>) ; // Original Cloud
         pcl::PointCloud<PointT>::Ptr cropped_cloud (new pcl::PointCloud<PointT>); // Cropped Cloud
 
@@ -341,10 +361,13 @@ class VoxelGrid_filter : public rclcpp::Node
         // Voxel Filter
         rclcpp::Parameter voxel_grid_x_param = this->get_parameter("voxel_grid_x");
         float voxel_grid_x = voxel_grid_x_param.as_double();
+        params_msg.voxel_grid_x = voxel_grid_x;
         rclcpp::Parameter voxel_grid_y_param = this->get_parameter("voxel_grid_y");
         float voxel_grid_y = voxel_grid_y_param.as_double();
+        params_msg.voxel_grid_y = voxel_grid_y;
         rclcpp::Parameter voxel_grid_z_param = this->get_parameter("voxel_grid_z");
         float voxel_grid_z = voxel_grid_z_param.as_double();
+        params_msg.voxel_grid_z = voxel_grid_z;
 
         pcl::PointCloud<PointT>::Ptr voxel_cloud (new pcl::PointCloud<PointT>); // Voxel Cloud
         pcl::VoxelGrid<PointT> voxel_filter;
@@ -359,22 +382,22 @@ class VoxelGrid_filter : public rclcpp::Node
 
         RCLCPP_INFO(this->get_logger(),"Voxel size: %ld", voxel_cloud->size());
         
-  //==================================== Road Segmentation  ====================================
+  //==================================== Plane Segmentation  ====================================
         pcl::NormalEstimation<PointT, pcl::Normal> normal_extractor;
         pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>());
         pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
 
-        pcl::SACSegmentationFromNormals<PointT, pcl::Normal> road_seg_frm_normals;
-        pcl::PointIndices::Ptr road_inliers(new pcl::PointIndices);
-        pcl::ModelCoefficients::Ptr road_coefficients(new pcl::ModelCoefficients);
-        pcl::ExtractIndices<PointT> road_extract_indices;
-        pcl::PointCloud<PointT>::Ptr road_cloud(new pcl::PointCloud<PointT>);
+        pcl::SACSegmentationFromNormals<PointT, pcl::Normal> plane_seg_frm_normals;
+        pcl::PointIndices::Ptr plane_inliers(new pcl::PointIndices);
+        pcl::ModelCoefficients::Ptr plane_coefficients(new pcl::ModelCoefficients);
+        pcl::ExtractIndices<PointT> plane_extract_indices;
+        pcl::PointCloud<PointT>::Ptr plane_cloud(new pcl::PointCloud<PointT>);
 
 
         // Normals Extractions
         rclcpp::Parameter ksearch_param = this->get_parameter("ksearch");
-        int ksearch = ksearch_param.as_int();
-
+        float ksearch = ksearch_param.as_int();
+        params_msg.ksearch = ksearch;
         normal_extractor.setSearchMethod(tree);
         normal_extractor.setInputCloud(voxel_cloud);
         normal_extractor.setKSearch(ksearch);
@@ -383,31 +406,41 @@ class VoxelGrid_filter : public rclcpp::Node
         draw_normals(normals, voxel_cloud);
 
         // Parameters for Planar Segmentation
-        road_seg_frm_normals.setOptimizeCoefficients(true);
-        road_seg_frm_normals.setModelType(pcl::SACMODEL_NORMAL_PLANE);
-        road_seg_frm_normals.setMethodType(pcl::SAC_RANSAC);
-        road_seg_frm_normals.setNormalDistanceWeight(0.5);
-        road_seg_frm_normals.setMaxIterations(100);
-        road_seg_frm_normals.setDistanceThreshold(0.4);
-        road_seg_frm_normals.setInputCloud(voxel_cloud);
-        road_seg_frm_normals.setInputNormals(normals);
-        road_seg_frm_normals.segment(*road_inliers,*road_coefficients);
+        rclcpp::Parameter normal_distance_weight_param = this->get_parameter("normal_distance_weight");
+        float normal_distance_weight = normal_distance_weight_param.as_double();
+        params_msg.normal_distance_weight = normal_distance_weight;
+        rclcpp::Parameter max_iterations_param = this->get_parameter("max_iterations");
+        int max_iterations = max_iterations_param.as_int();
+        params_msg.max_iterations = max_iterations;
+        rclcpp::Parameter distance_threshold_param = this->get_parameter("distance_threshold");
+        float distance_threshold = distance_threshold_param.as_double();
+        params_msg.distance_threshold = distance_threshold;
+
+        plane_seg_frm_normals.setOptimizeCoefficients(true);
+        plane_seg_frm_normals.setModelType(pcl::SACMODEL_NORMAL_PLANE);
+        plane_seg_frm_normals.setMethodType(pcl::SAC_RANSAC);
+        plane_seg_frm_normals.setNormalDistanceWeight(normal_distance_weight);
+        plane_seg_frm_normals.setMaxIterations(max_iterations);
+        plane_seg_frm_normals.setDistanceThreshold(distance_threshold);
+        plane_seg_frm_normals.setInputCloud(voxel_cloud);
+        plane_seg_frm_normals.setInputNormals(normals);
+        plane_seg_frm_normals.segment(*plane_inliers,*plane_coefficients);
 
         //Extracting Cloud based on Inliers indices
-        road_extract_indices.setInputCloud(voxel_cloud);
-        road_extract_indices.setIndices(road_inliers);
-        road_extract_indices.setNegative(true);
-        road_extract_indices.filter(*road_cloud);
+        plane_extract_indices.setInputCloud(voxel_cloud);
+        plane_extract_indices.setIndices(plane_inliers);
+        plane_extract_indices.setNegative(true);
+        plane_extract_indices.filter(*plane_cloud);
 
-        sensor_msgs::msg::PointCloud2 ros_road_normals;
-        pcl::toROSMsg(*road_cloud, ros_road_normals);
-        ros_road_normals.header = input_cloud->header;
-        road_normal_pub->publish(ros_road_normals);
-        // RCLCPP_INFO(this->get_logger(),"Road size: %ld", road_cloud->size());
-  //==================================== Traffic Segmentation  ====================================
+        sensor_msgs::msg::PointCloud2 ros_plane_normals;
+        pcl::toROSMsg(*plane_cloud, ros_plane_normals);
+        ros_plane_normals.header = input_cloud->header;
+        plane_normal_pub->publish(ros_plane_normals);
+        RCLCPP_INFO(this->get_logger(),"plane size: %ld", plane_cloud->size());
+  //==================================== Clusters Segmentation  ====================================
     pcl::PointCloud<PointT>::Ptr segmented_cluster (new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr all_clusters (new pcl::PointCloud<PointT>);
-    tree->setInputCloud (road_cloud);
+    tree->setInputCloud (plane_cloud);
     std::vector<pcl::PointIndices> cluster_indices;
     pcl::EuclideanClusterExtraction<PointT> ec;
 
@@ -424,16 +457,27 @@ class VoxelGrid_filter : public rclcpp::Node
       double g = 0.0;
       double b = 0.0;
     };
-    ec.setClusterTolerance (0.25); // 2cm
-    ec.setMinClusterSize (600);
-    ec.setMaxClusterSize (2000);
+
+    rclcpp::Parameter cluster_tolerance_param = this->get_parameter("cluster_tolerance");
+    float cluster_tolerance = cluster_tolerance_param.as_double();
+    params_msg.cluster_tolerance = cluster_tolerance;
+    rclcpp::Parameter max_cluster_param = this->get_parameter("max_cluster");
+    float max_cluster = max_cluster_param.as_int();
+    params_msg.max_cluster = max_cluster;
+    rclcpp::Parameter min_cluster_param = this->get_parameter("min_cluster");
+    float min_cluster = min_cluster_param.as_int();
+    params_msg.min_cluster = min_cluster;
+
+    ec.setClusterTolerance (cluster_tolerance); 
+    ec.setMinClusterSize (min_cluster);
+    ec.setMaxClusterSize (max_cluster);
     ec.setSearchMethod (tree);
-    ec.setInputCloud (road_cloud);
+    ec.setInputCloud (plane_cloud);
     ec.extract (cluster_indices);
     std::vector<BBox> bboxes;
 
-    size_t min_reasonable_size = 610;
-    size_t max_reasonable_size = 1900;
+    size_t min_reasonable_size = size_t(min_cluster * 1.1);
+    size_t max_reasonable_size = size_t(max_cluster * 0.9);
     int num_reasonable_clusters = 0;
     for (size_t i = 0; i < cluster_indices.size(); i++)
     {
@@ -442,7 +486,7 @@ class VoxelGrid_filter : public rclcpp::Node
             pcl::PointCloud<PointT>::Ptr reasonable_cluster (new pcl::PointCloud<PointT>);
             pcl::ExtractIndices<PointT> extract;
             pcl::IndicesPtr indices(new std::vector<int>(cluster_indices[i].indices.begin(), cluster_indices[i].indices.end()));
-            extract.setInputCloud (road_cloud);
+            extract.setInputCloud (plane_cloud);
             extract.setIndices(indices);
             extract.setNegative (false);
             extract.filter (*reasonable_cluster);
@@ -464,6 +508,7 @@ class VoxelGrid_filter : public rclcpp::Node
             bboxes.push_back(bbox);
         }
     }
+    RCLCPP_INFO(this->get_logger(),"Clusters: %d", num_reasonable_clusters);
 
     //==================================== Drawing Boxes  ====================================
 
@@ -620,15 +665,16 @@ class VoxelGrid_filter : public rclcpp::Node
   //==================================== Cloud publishing to ROS  ====================================
 
         // Convert cloud to ros2 message
-        sensor_msgs::msg::PointCloud2 traffic_seg_ros2;
-        pcl::toROSMsg(*all_clusters, traffic_seg_ros2);
-        traffic_seg_ros2.header = input_cloud->header;
+        sensor_msgs::msg::PointCloud2 clusters_seg_ros2;
+        pcl::toROSMsg(*all_clusters, clusters_seg_ros2);
+        clusters_seg_ros2.header = input_cloud->header;
         // std::cout << "PointCloud size before voxelization: " << pcl_cloud->size() << std::endl;
         // std::cout << "PointCloud size after voxelization: " << voxel_cloud->size() << std::endl;
 
-        traffic_seg_pub->publish(traffic_seg_ros2);
-
-
+        clusters_seg_pub->publish(clusters_seg_ros2);
+        
+        clust_seg_data_pub->publish(params_msg);
+        
   }
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::TimerBase::SharedPtr axis_timer;
@@ -638,11 +684,12 @@ class VoxelGrid_filter : public rclcpp::Node
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr boxes_pub;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr axis_pub;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr normals_cloud_pub;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr traffic_seg_pub;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr clusters_seg_pub;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr raw_input_pub;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cropped_cloud_pup;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr voxel_grid_pub;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr road_normal_pub;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr plane_normal_pub;
+  rclcpp::Publisher<interfaces::msg::ClusteringSegmentation>::SharedPtr clust_seg_data_pub;
 
 
   size_t count_;
